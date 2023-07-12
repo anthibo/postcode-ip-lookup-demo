@@ -1,0 +1,17 @@
+{
+  "name": "ip-lookup",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@googlemaps/google-maps-services-js": "^3.3.33",
+    "@maxmind/geoip2-node": "^4.1.0",
+    "geoip-lite": "^1.4.7"
+  }
+}
