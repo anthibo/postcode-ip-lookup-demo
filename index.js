@@ -11,10 +11,6 @@ const client = new WebServiceClient('your_accountId', 'your_license_key', {
     host: 'geolite.info'
 });
 
-// accountId -> 889356
-// License key -> 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
-// google_api_key -> AIzaSyDJplykiPrL0AkCmGM6hY_OkziHRcsDj2s
-
 let ipAddr
 // getting host ip address
 https.get('https://api.ipify.org', (res) => {
