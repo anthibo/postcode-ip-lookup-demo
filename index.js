@@ -1,87 +1,53 @@
-const https = require('https');
-const WebServiceClient = require('@maxmind/geoip2-node').WebServiceClient
 const {
-    Client
-} = require("@googlemaps/google-maps-services-js");
+    Worker,
+} = require('worker_threads');
+const fs = require('fs');
+const os = require('os')
 
-const googleMapServicesClient = new Client({});
+const numOfCpus = os.cpus().length;
+const THREAD_COUNT = numOfCpus;
 
-// for using geolite plan only (current credential does not have access to geoIP2)
-const client = new WebServiceClient('your_accountId', 'your_license_key', {
-    host: 'geolite.info'
-});
+// read data from stripe-users.json
+const stripeUsers = JSON.parse(fs.readFileSync('./data/stripe-users.json', 'utf8'));
 
-let ipAddr
-// getting host ip address
-https.get('https://api.ipify.org', (res) => {
-    let data = '';
-    res.on('data', (chunk) => {
-        data += chunk;
+// function to write results to users-with-postcode.json
+const writeResultsToFile = (usersResult) => {
+    console.log(`writing user results to users-with-postcode.json`)
+    fs.writeFile('./data/users-with-postcode.json', JSON.stringify(usersResult), (err) => {
+        if (err) throw err;
+        console.log('The file has been saved!');
     });
-    res.on('end', () => {
-        ipAddr = data;
-        console.log('My public IP address is:', data);
-
-        const postCode = fetchPostCodeFromIPAddress()
-        console.log(`postal code: ${postCode}`)
-    });
-}).on('error', (err) => {
-    console.error('Error getting IP address:', err);
-});
-
-
-const fetchPostCodeFromIPAddress = async (ipAddress) => {
-    try {
-        const {
-            postal,
-            location
-        } = await client.city(ipAddr)
-        if (!postal) {
-            // fallback -> use google reverse geocode to fetch the IP postcode
-            console.log('fallback -> use google reverse geocode to fetch the IP postcode')
-            return await fetchPostCodeFromCoordinates(location)
-        }
-        console.log(`getting post code from geoIP2: ${postal}`)
-        return postal
-    } catch (err) {
-        console.log(err)
-    }
 }
 
-const fetchPostCodeFromCoordinates = async ({
-    latitude,
-    longitude
-}) => {
-    const latLng = `${latitude},${longitude}`
-    const {
-        data: {
-            results
-        }
-    } = await googleMapServicesClient
-        .reverseGeocode({
-            params: {
-                key: "your_google_api_key with Geocode API enabled",
-                latlng: latLng,
+function createWorker(stripeUsers) {
+    return new Promise(function (resolve, reject) {
+        const worker = new Worker("./worker.js", {
+            workerData: {
+                stripeUsers
             },
-        })
-
-    // extract postal code from response results
-    const postalCode = extractPostCode(results);
-    console.log(`getting post code from google map services reverse geocode: ${postalCode}`)
-    return postalCode;
-}
-
-
-// extract postal code from first valid result
-const extractPostCode = (results) => {
-    const result = results.find(result => {
-        return result.address_components.some(component => {
-            return component.types.includes('postal_code');
+        });
+        worker.on("message", (data) => {
+            resolve(data);
+        });
+        worker.on("error", (msg) => {
+            reject(`An error ocurred: ${msg}`);
         });
     });
-
-    const postalCode = result ? result.address_components.find(component => {
-        return component.types.includes('postal_code');
-    }).long_name : null;
-    return postalCode;
 }
+
+async function main() {
+    const workerPromises = [];
+    const stripeUsersLength = stripeUsers.length
+    const stripeUsersCountPerThread = Math.floor(stripeUsersLength / THREAD_COUNT);
+    for (let i = 0; i < THREAD_COUNT; i++) {
+        const from = i * stripeUsersCountPerThread
+        const to = from + stripeUsersCountPerThread
+        const users = stripeUsers.slice(from, to)
+        workerPromises.push(createWorker(users));
+    }
+    const thread_results = await Promise.all(workerPromises);
+    const updatedUsers = [...thread_results]
+    writeResultsToFile(updatedUsers)
+}
+
+main()
